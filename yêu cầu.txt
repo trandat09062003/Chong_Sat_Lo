@@ -1,0 +1,57 @@
+================================================================================
+TÓM TẮT YÊU CẦU DỰ ÁN: HỆ THỐNG CẢNH BÁO SẠT LỞ ĐẤT (CHỐNG SẠT LỞ)
+================================================================================
+
+1. TỔNG QUAN DỰ ÁN
+- Mục tiêu: Phát hiện sớm và cảnh báo nguy cơ sạt lở đất tại các vùng đồi núi (đặc biệt nghiên cứu tại vùng Dốc Cun và Đèo Thung Khe, Quốc lộ 6, tỉnh Hòa Bình) dựa trên các thông số môi trường và động học đất.
+- Hoạt động: Trạm đo thực địa sẽ thu thập dữ liệu từ cảm biến gửi về vi điều khiển ESP32. ESP32 xử lý dữ liệu bằng mô hình học máy tại biên (TinyML) và truyền dữ liệu không dây qua sóng LoRa về trung tâm giám sát. Hệ thống tự động kích hoạt còi hú cảnh báo tại chỗ khi phát hiện nguy hiểm.
+
+2. CÁC KHỐI CHỨC NĂNG CHÍNH
+- Khối xử lý trung tâm (ESP32): Xử lý dữ liệu đa cảm biến, chạy mô hình suy luận TinyML, điều khiển truyền tin LoRa và còi cảnh báo.
+- Khối cảm biến địa chấn & động học (MPU6050): Đo rung chấn, góc nghiêng, sự dịch chuyển của cấu trúc đất đá.
+- Khối cảm biến môi trường:
+  + Cảm biến độ ẩm đất: Giám sát độ bão hòa nước của đất.
+  + Cảm biến lượng mưa: Đo cường độ và lượng mưa tích lũy.
+- Khối hiển thị: Màn hình LCD 16x2 giao tiếp I2C hiển thị thông số môi trường và điện áp pin tại trạm.
+- Khối truyền tin vô tuyến (LoRa SX1278): Truyền/nhận dữ liệu khoảng cách xa về trung tâm giám sát.
+- Khối cảnh báo tại chỗ (Còi hú): Phát tín hiệu âm thanh cảnh báo ngay tại thực địa.
+- Khối nguồn & Giám sát năng lượng:
+  + Tấm pin năng lượng mặt trời (5V - 10W) kết hợp mạch sạc TP4056 và Pin Lithium 18650 (3.7V - 3000mAh) cung cấp năng lượng lâu dài ngoài thực địa.
+  + Mạch phân áp đo dung lượng/điện áp pin để gửi trạng thái năng lượng về trung tâm.
+
+3. SƠ ĐỒ KẾT NỐI (PHẦN CỨNG MẠCH PHÁT)
+Dựa theo sơ đồ nguyên lý mạch phát:
+- ESP32 DOIT DEVKIT V1 (30 chân)
+- Cảm biến độ ẩm đất (Soil Moisture):
+  + Chân Analog (SOIL AO) -> GPIO 34 (ADC1_CH6)
+  + Chân Digital (SOIL DO) -> GPIO 35 (Input)
+- Cảm biến mưa (Rain Sensor):
+  + Chân Analog (RAIN AO) -> GPIO 33 (ADC1_CH5)
+  + Chân Digital (RAIN DO) -> GPIO 32 (Input)
+- Cảm biến góc/gia tốc MPU6050:
+  + Giao tiếp I2C: SCL -> GPIO 22, SDA -> GPIO 21
+  + Chân ngắt INT -> GPIO 4
+- Màn hình LCD 16x2 (hoặc OLED):
+  + Giao tiếp I2C: SCL -> GPIO 22, SDA -> GPIO 21
+- Module LoRa SX1278 (chuẩn truyền UART):
+  + Chân M0 -> GPIO 25 (Set chế độ hoạt động cho LoRa)
+  + Chân M1 -> GPIO 26 (Set chế độ hoạt động cho LoRa)
+  + Chân RX (nối từ LoRa RX) -> GPIO 5 (TX của ESP32 sang LoRa)
+  + Chân TX (nối từ LoRa TX) -> GPIO 17 (RX của ESP32 nhận từ LoRa - Pin TX2)
+  + Chân AUX -> GPIO 27 (Trạng thái truyền nhận của LoRa)
+- Khối còi cảnh báo (Buzzer):
+  + BUZZER_CTRL -> GPIO 19 (Điều khiển Transistor Q1 C1815 kích còi hú SP1)
+- Mạch đo điện áp pin (Battery Voltage Divider):
+  + BAT_ADC -> GPIO 13 (ADC1_CH4) nối giữa cầu phân áp R1=100k, R2=100k từ cực dương pin (BAT V).
+
+4. MÔ HÌNH DỰ BÁO VÀ THUẬT TOÁN (TINYML / EDGE AI)
+- Thuật toán áp dụng: Random Forest Classifier (Rừng ngẫu nhiên) được huấn luyện và nhúng trực tiếp (suy luận tại biên) trên ESP32 dưới dạng các mảng cấu trúc C/C++.
+- Dữ liệu đầu vào:
+  + Độ bão hòa nước trong đất (độ ẩm đất %).
+  + Lượng mưa tích lũy theo thời gian.
+  + Biên độ dao động cơ học và độ lệch góc nghiêng (tính toán từ MPU6050 qua bộ lọc thông thấp số DLPF).
+- Phân loại trạng thái đầu ra (3 cấp độ):
+  1. Trạng thái an toàn (Safe): Đất ổn định, độ ẩm thấp, không rung lắc.
+  2. Trạng thái cảnh báo sớm (Warning): Đất bắt đầu bão hòa nước, độ ẩm cao, cần giám sát chặt chẽ.
+  3. Trạng thái nguy hiểm (Danger): Nguy cơ sạt lở tức thời (độ ẩm cực cao + mưa lớn + xuất hiện rung động đất/nghiêng cọc) -> Tự động kích hoạt còi hú tại chỗ và gửi tín hiệu khẩn cấp qua LoRa.
+- Ưu điểm của Edge AI: Xử lý tức thời không độ trễ, tự động cảnh báo tại chỗ ngay cả khi mất kết nối mạng.

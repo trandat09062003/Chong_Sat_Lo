@@ -1,0 +1,44 @@
+================================================================================
+TỔNG HỢP TIẾN TRÌNH LÀM VIỆC DỰ ÁN: HỆ THỐNG CẢNH BÁO SẠT LỞ ĐẤT
+================================================================================
+
+1. TÓM TẮT TÀI LIỆU YÊU CẦU DỰ ÁN
+- Đã đọc dữ liệu từ 3 file docx báo cáo và danh sách linh kiện để tạo tệp tóm tắt "yêu cầu.txt".
+- Xác định hệ thống chạy tại vùng Dốc Cun, Hòa Bình sử dụng mô hình học máy Rừng ngẫu nhiên (Random Forest Classifier) chạy tại biên (TinyML) trên ESP32 DevKit V1 kết hợp cảm biến địa chấn MPU6050, cảm biến độ ẩm đất, lượng mưa, còi cảnh báo tại chỗ, màn hình hiển thị và module LoRa SX1278 để truyền tin về trung tâm giám sát.
+
+2. CẤU HÌNH THƯ VIỆN DÙNG CHUNG (SHARED LIBRARIES)
+- Đã cài đặt đầy đủ các thư viện cần thiết: Adafruit_MPU6050, Adafruit_Unified_Sensor, Adafruit_BusIO, LiquidCrystal_I2C.
+- Để thuận tiện biên dịch cho cả code mạch phát (Transmit) và mạch thu (Receive), toàn bộ thư viện này đã được đóng gói và cấu trúc lại trong thư mục dùng chung nằm ở thư mục gốc của dự án:
+  "C:\Users\Public\Documents\Altium\2026\Chong_Sat_Lo\libraries\"
+- Đã sửa file "library.properties" của thư viện LiquidCrystal_I2C (chuyển architectures từ "avr" thành "*") để tắt hoàn toàn các cảnh báo màu đỏ không tương thích kiến trúc khi biên dịch trên chip ESP32.
+
+3. MÃ NGUỒN MẠCH PHÁT (TRANSMIT) & PHÂN BỔ MÀN HÌNH LCD 2004
+- Tệp tin chính: "C:\Users\Public\Documents\Altium\2026\Chong_Sat_Lo\Transmit\Transmit.ino"
+- Đã thiết kế cấu hình chân tương thích 100% với PCB/Schematic Altium:
+  + Cảm biến đất: AO -> 34, DO -> 35
+  + Cảm biến mưa: AO -> 33, DO -> 32
+  + MPU6050 & LCD 2004: SDA -> 21, SCL -> 22, MPU INT -> 4
+  + Còi hú: BUZZER_CTRL -> 19
+  + Đo Pin: BAT_ADC -> 13
+  + LoRa SX1278: M0 -> 25, M1 -> 26, AUX -> 27, RX -> 16 (ESP32 RX2), TX -> 17 (ESP32 TX2)
+- Do người dùng chuyển sang sử dụng màn hình LCD 2004 (20x4), giao diện hiển thị đã được thiết kế lại tối ưu trên 4 dòng:
+  * Dòng 0: Hiển thị độ ẩm đất (%) và lượng mưa (%)
+  * Dòng 1: Hiển thị góc lệch nghiêng đo từ MPU6050 (độ)
+  * Dòng 2: Hiển thị điện áp pin (V) và % dung lượng pin
+  * Dòng 3: Hiển thị trạng thái cảnh báo sạt lở (SAFE / WARNING / DANGER)
+
+4. CHƯƠNG TRÌNH TEST VÀ CHẨN ĐOÁN LỖI PHẦN CỨNG ĐỘC LẬP
+- Đã tạo các tệp test độc lập để người dùng dễ kiểm tra từng linh kiện:
+  + "Test_MPU6050.ino": Đọc dữ liệu thô và góc nghiêng của cảm biến MPU6050.
+  + "Test_LCD.ino": Quét tìm địa chỉ và nhấp nháy đèn nền để test màn hình LCD.
+  + "Test_Soil_Rain.ino": Đọc giá trị Analog & Digital thô của cảm biến đất và cảm biến mưa.
+  + "Test_Buzzer.ino": Phát tiếng còi tít-tít theo chu kỳ và hú nhanh cảnh báo.
+  + "Test_Battery.ino": Đọc và hiển thị điện áp pin từ chân ADC.
+  + "Test_LoRa.ino": Gửi gói tin ping kiểm tra truyền nhận dữ liệu.
+  + "Test_MPU_LCD.ino": Code test quét bus I2C đồng thời và hiển thị dữ liệu góc nghiêng lên màn hình LCD.
+
+5. MÃ NGUỒN MẠCH THU (RECEIVE GATEWAY)
+- Tệp tin chính: "C:\Users\Public\Documents\Altium\2026\Chong_Sat_Lo\Receive\Receive.ino"
+- Code được thiết kế nhận dữ liệu truyền không dây qua LoRa SX1278 thông qua giao thức UART2 (RX2-16, TX2-17).
+- Tích hợp tính năng phát mạng Wi-Fi Access Point nội bộ mang tên "ESP32_Gateway_AP" (mật khẩu: 123456789_landslide).
+- Khởi chạy một Web Server tại địa chỉ IP mặc định 192.168.4.1 làm trang Dashboard hiển thị trực quan các thẻ dữ liệu thực tế nhận từ mạch phát và tự động nhấp nháy đỏ báo động khẩn cấp khi nhận được tín hiệu NGUY HIỂM.
